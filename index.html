@@ -310,7 +310,9 @@
   .concluido-box .col-head{margin-bottom:10px;}
   .concluido-box .col-head .title{color:var(--ok);}
   .concluido-box .col-head .count{background:var(--ok);}
-  .concluido-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;}
+  .concluido-grid{display:none;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-height:320px;overflow-y:auto;padding-top:2px;}
+  .concluido-grid.show{display:grid;}
+  .concluido-box .col-head{cursor:pointer;user-select:none;}
   .archive-box{background:#f0f0f2;border-color:#d8d8de;margin-top:14px;}
   .archive-box .col-head .title{color:#5b5b66;}
   .archive-box .col-head .count{background:#5b5b66;}
@@ -547,7 +549,7 @@
       <div class="board" id="board"></div>
 
       <div class="concluido-box">
-        <div class="col-head">
+        <div class="col-head" onclick="toggleConcluidoGrid('concluido-grid')">
           <div class="title">✓ Concluído 2026</div>
           <div class="count" id="concluido-count">0</div>
         </div>
@@ -555,7 +557,7 @@
       </div>
 
       <div class="concluido-box archive-box">
-        <div class="col-head">
+        <div class="col-head" onclick="toggleConcluidoGrid('concluido2025-grid')">
           <div class="title">✓ Concluído 2025</div>
           <div class="count" id="concluido2025-count">0</div>
         </div>
@@ -1136,6 +1138,10 @@ function openMonthDetail(mes){
 function closeMonthDetail(){
   monthDetailEl.classList.remove('show');
   window.__openMonthDetailMes = null;
+}
+function toggleConcluidoGrid(id){
+  const el = document.getElementById(id);
+  if(el) el.classList.toggle('show');
 }
 
 const procedureModalEl = document.getElementById('procedure-modal');
