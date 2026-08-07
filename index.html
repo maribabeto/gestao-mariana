@@ -559,7 +559,6 @@
           <div class="title">✓ Concluído 2025</div>
           <div class="count" id="concluido2025-count">0</div>
         </div>
-        <div class="card-sub" style="margin:-4px 0 10px;">Pacientes cujo último atendimento foi em 2025 — arquivo histórico</div>
         <div class="concluido-grid" id="concluido2025-grid"></div>
       </div>
     </section>
@@ -961,8 +960,15 @@ function renderOverview(){
   document.getElementById('kpi-reactivation').textContent = DATA.stage_counts['Reativação necessária (4+ meses)'] || 0;
 
   const deltaEl = document.getElementById('kpi-month-delta');
-  deltaEl.textContent = `${DATA.all_months.length} meses acumulados em 2026`;
-  deltaEl.className = 'delta flat';
+  if(DATA.prev_year_pacientes_unicos && DATA.prev_year_pacientes_unicos > 0){
+    const pct = Math.round(((DATA.total_pacientes_unicos - DATA.prev_year_pacientes_unicos) / DATA.prev_year_pacientes_unicos) * 100);
+    const sign = pct >= 0 ? '+' : '';
+    deltaEl.textContent = `${sign}${pct}% vs. mesmo período de 2025`;
+    deltaEl.className = 'delta ' + (pct >= 0 ? 'up' : 'down');
+  } else {
+    deltaEl.textContent = `comparação com 2025 indisponível`;
+    deltaEl.className = 'delta flat';
+  }
 
   document.getElementById('kpi-total-patients-sub').textContent =
     m ? `filtrado: ${fmtMonth(m)}` : `${DATA.all_months.length} meses no período`;
@@ -991,7 +997,12 @@ function renderOverview(){
         onClick:(evt, elements)=>{
           if(!elements.length) return;
           const idx = elements[0].index;
-          openMonthDetail(DATA.monthly[idx].mes);
+          const mes = DATA.monthly[idx].mes;
+          if(monthDetailEl.classList.contains('show') && window.__openMonthDetailMes === mes){
+            closeMonthDetail();
+          } else {
+            openMonthDetail(mes);
+          }
         },
         onHover:(evt, elements)=>{
           evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
@@ -1013,9 +1024,13 @@ function renderOverview(){
     });
   }
 
-  // lead source doughnut
-  const srcLabels = Object.keys(md.lead_source);
-  const srcVals = Object.values(md.lead_source);
+  // lead source doughnut — top 4 individuais + "Outros" agrupando o restante
+  const srcEntriesAll = Object.entries(md.lead_source || {}).sort((a,b)=>b[1]-a[1]);
+  const srcTop = srcEntriesAll.slice(0,4);
+  const srcRestSum = srcEntriesAll.slice(4).reduce((acc,[,v])=>acc+v,0);
+  const srcEntries = srcRestSum > 0 ? [...srcTop, ['Outros', srcRestSum]] : srcTop;
+  const srcLabels = srcEntries.map(e=>e[0]);
+  const srcVals = srcEntries.map(e=>e[1]);
   const srcColors = ['#1c2b45','#b6934f','#7a9a8b','#c97b3e','#8b95ac'];
   const sourceEmptyEl = document.getElementById('source-empty');
   const sourceCanvas = document.getElementById('chartSource');
@@ -1116,9 +1131,11 @@ function openMonthDetail(mes){
     </div>
   `).join('') : '<div class="mrow">Nenhum atendimento encontrado.</div>';
   monthDetailEl.classList.add('show');
+  window.__openMonthDetailMes = mes;
 }
 function closeMonthDetail(){
   monthDetailEl.classList.remove('show');
+  window.__openMonthDetailMes = null;
 }
 
 const procedureModalEl = document.getElementById('procedure-modal');
