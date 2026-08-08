@@ -229,6 +229,7 @@
     background:#fff;display:inline-block;padding:1px 6px;border-radius:999px;
   }
   .cal-day .dcount.dcount-activity{color:#2a5db0;margin-top:3px;}
+  .cal-day .dcount.dcount-done{background:#d9f2e0;color:#25794a;}
   .cal-day.today .dnum{color:var(--navy);text-decoration:underline;}
   .cal-day-detail{
     margin-top:14px;font-size:13px;background:#f7f4ec;border-radius:10px;padding:12px 14px;display:none;
@@ -296,14 +297,17 @@
   }
   .history-item .hdate{color:var(--muted);font-size:11px;font-weight:600;margin-bottom:3px;}
   .check-item{
-    display:flex;align-items:center;gap:8px;background:#f7f4ec;border-radius:9px;
-    padding:7px 10px;margin-bottom:6px;font-size:12.5px;
+    display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;background:#f7f4ec;border-radius:9px;
+    padding:8px 10px;margin-bottom:6px;font-size:12.5px;
   }
   .check-item.done .check-text{text-decoration:line-through;color:var(--muted);}
-  .check-item .check-text{flex:1;}
-  .check-item .check-del{cursor:pointer;color:var(--danger);font-size:13px;line-height:1;background:none;border:none;padding:2px 4px;}
+  .check-item .check-text{flex:1 1 100%;font-weight:600;}
+  .check-item select.check-status-select{font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:#fff;}
+  .check-item input.check-prazo-input{font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:#fff;max-width:128px;}
+  .check-item .check-del{cursor:pointer;color:var(--danger);font-size:13px;line-height:1;background:none;border:none;padding:2px 4px;margin-left:auto;}
   .check-add-row{display:flex;gap:6px;margin-top:8px;}
   .check-add-row input{flex:1;}
+  .plan-progress{font-size:11px;color:var(--muted);margin-top:2px;}
   .flag-tag{
     display:inline-block;background:#f3e5fb;color:#8a3fc9;font-size:11px;font-weight:700;
     padding:3px 9px;border-radius:999px;
@@ -523,8 +527,11 @@
       </div>
 
       <div class="card">
-        <h3>Procedimentos mais realizados</h3>
-        <div class="card-sub" style="margin-bottom:6px;">Clique num procedimento para ver o detalhe mensal</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <h3 style="margin-bottom:0;">Procedimentos mais realizados</h3>
+          <span id="proc-source-filter-tag" style="display:none;font-size:11px;font-weight:700;color:var(--gold);cursor:pointer;white-space:nowrap;" onclick="clearProcedureSourceFilter()"></span>
+        </div>
+        <div class="card-sub" style="margin-bottom:6px;">Clique num procedimento para ver o detalhe mensal — clique numa origem ao lado para filtrar por ela</div>
         <div class="chart-wrap" style="height:260px;"><canvas id="chartProcedures"></canvas></div>
       </div>
     </section>
@@ -974,6 +981,7 @@ function populateOverviewMonthFilter(){
 populateOverviewMonthFilter();
 
 let chartMonthly, chartSource, chartProcedures;
+let procSourceFilter = null;
 
 function currentMonthData(m){
   if(!m){
@@ -1065,7 +1073,7 @@ function renderOverview(){
   const srcEntriesAll = Object.entries(md.lead_source || {}).sort((a,b)=>b[1]-a[1]);
   const srcTop = srcEntriesAll.slice(0,4);
   const srcRestSum = srcEntriesAll.slice(4).reduce((acc,[,v])=>acc+v,0);
-  const srcEntries = srcRestSum > 0 ? [...srcTop, ['Outros', srcRestSum]] : srcTop;
+  const srcEntries = srcRestSum > 0 ? [...srcTop, ['OUTROS', srcRestSum]] : srcTop;
   const srcLabels = srcEntries.map(e=>e[0]);
   const srcVals = srcEntries.map(e=>e[1]);
   const srcColors = ['#1c2b45','#b6934f','#7a9a8b','#c97b3e','#8b95ac'];
@@ -1094,6 +1102,16 @@ function renderOverview(){
         },
         options:{
           responsive:true, maintainAspectRatio:false,
+          onClick:(evt, elements)=>{
+            if(!elements.length) return;
+            const idx = elements[0].index;
+            const label = chartSource.data.labels[idx];
+            if(procSourceFilter === label){
+              clearProcedureSourceFilter();
+            } else {
+              applyProcedureSourceFilter(label);
+            }
+          },
           plugins:{
             legend:{position:'bottom', labels:{boxWidth:10, font:{size:11, family:'DM Sans'}}},
             datalabels:{
@@ -1154,7 +1172,33 @@ function renderOverview(){
     });
   }
 }
-monthFilter.addEventListener('change', renderOverview);
+function applyProcedureSourceFilter(como){
+  procSourceFilter = como;
+  const src = (DATA.top_procedures_by_source && DATA.top_procedures_by_source[como]) || {};
+  const sorted = Object.entries(src).sort((a,b)=>b[1]-a[1]).slice(0,15);
+  const labels = sorted.map(e=>e[0]);
+  const vals = sorted.map(e=>e[1]);
+  if(chartProcedures){
+    chartProcedures.data.labels = labels;
+    chartProcedures.data.datasets[0].data = vals;
+    chartProcedures.update();
+  }
+  const tag = document.getElementById('proc-source-filter-tag');
+  tag.style.display = 'inline';
+  tag.textContent = `Filtrado: ${como} ✕`;
+}
+function clearProcedureSourceFilter(){
+  procSourceFilter = null;
+  const m = monthFilter.value;
+  const md = currentMonthData(m);
+  if(chartProcedures){
+    chartProcedures.data.labels = Object.keys(md.top_procedures);
+    chartProcedures.data.datasets[0].data = Object.values(md.top_procedures);
+    chartProcedures.update();
+  }
+  document.getElementById('proc-source-filter-tag').style.display = 'none';
+}
+monthFilter.addEventListener('change', ()=>{ clearProcedureSourceFilter(); renderOverview(); });
 renderOverview();
 
 const monthDetailEl = document.getElementById('month-detail');
@@ -1555,6 +1599,7 @@ function toggleCalendarEvent(originalStage, pid){
   renderBoard();
   renderPatientsIfVisible();
   refreshDayModal();
+  renderCalendar();
   pushStateDebounced();
 }
 
@@ -1575,6 +1620,7 @@ function renderCalendar(){
     const activities = dayActivities[iso] || [];
     const isFuture = iso >= DATA.referencia;
     const clickable = events.length>0 || activities.length>0 || isFuture;
+    const allContactsDone = events.length>0 && events.every(e=> currentStage[e.p._id] !== e.stage);
     const cell = document.createElement('div');
     cell.className = 'cal-day'
       + (events.length ? ' has-contacts' : '')
@@ -1582,7 +1628,7 @@ function renderCalendar(){
       + (!events.length && !activities.length && isFuture ? ' future-open' : '')
       + (iso===DATA.referencia ? ' today' : '');
     cell.innerHTML = `<div class="dnum">${d}</div>`
-      + (events.length ? `<div class="dcount">${events.length} contato${events.length>1?'s':''}</div>` : '')
+      + (events.length ? `<div class="dcount${allContactsDone?' dcount-done':''}">${events.length} contato${events.length>1?'s':''}</div>` : '')
       + (activities.length ? `<div class="dcount dcount-activity">${activities.length} atividade${activities.length>1?'s':''}</div>` : '');
     if(clickable){
       cell.addEventListener('click', ()=> openDayDetail(iso));
@@ -1887,12 +1933,15 @@ function renderPlanejamento(){
     const rows = sorted.filter(d=>d.ano===year).map(d=>{
       const act = planejamentoActivities[d.id];
       const hasAct = act && act.atividade;
+      const checklist = (act && act.checklist) || [];
+      const doneCount = checklist.filter(it=> normalizeChecklistItem(it).status==='Concluído').length;
       return `
         <div class="plan-row ${hasAct?'has-activity':''}" onclick="openPlanejamentoModal('${d.id}')">
           <div class="plan-date">${fmtDate(d.data)}</div>
           <div style="flex:1;">
             <div class="plan-titulo">${d.titulo}</div>
             ${hasAct ? `<div class="plan-activity-preview">${act.atividade}</div>` : ''}
+            ${checklist.length ? `<div class="plan-progress">${doneCount}/${checklist.length} etapas concluídas</div>` : ''}
           </div>
           ${hasAct ? `<span class="status-badge ${statusClass(act.status)}">${act.status}</span>` : ''}
         </div>
@@ -1940,13 +1989,21 @@ function renderPlanejamentoChecklist(id){
   const act = planejamentoActivities[id] || {};
   const items = act.checklist || [];
   const el = document.getElementById('planejamento-checklist-list');
-  el.innerHTML = items.length ? items.map((it,i)=>`
-    <div class="check-item ${it.feito?'done':''}">
-      <input type="checkbox" ${it.feito?'checked':''} onchange="togglePlanejamentoChecklistItem('${id}',${i})">
+  el.innerHTML = items.length ? items.map((raw,i)=>{
+    const it = normalizeChecklistItem(raw);
+    return `
+    <div class="check-item ${it.status==='Concluído'?'done':''}">
       <div class="check-text">${it.texto}</div>
+      <select class="check-status-select" onchange="updatePlanejamentoChecklistStatus('${id}',${i},this.value)">
+        <option value="Não iniciado" ${it.status==='Não iniciado'?'selected':''}>Não iniciado</option>
+        <option value="Em andamento" ${it.status==='Em andamento'?'selected':''}>Em andamento</option>
+        <option value="Concluído" ${it.status==='Concluído'?'selected':''}>Concluído</option>
+      </select>
+      <input type="date" class="check-prazo-input" value="${it.prazo}" onchange="updatePlanejamentoChecklistPrazo('${id}',${i},this.value)">
       <button class="check-del" onclick="deletePlanejamentoChecklistItem('${id}',${i})">✕</button>
     </div>
-  `).join('') : '<div style="color:var(--muted);font-size:12px;">Nenhum item ainda.</div>';
+  `;
+  }).join('') : '<div style="color:var(--muted);font-size:12px;">Nenhum item ainda.</div>';
 }
 function renderPlanejamentoHistorico(id){
   const act = planejamentoActivities[id] || {};
@@ -1956,6 +2013,13 @@ function renderPlanejamentoHistorico(id){
   el.innerHTML = sorted.length ? sorted.map(h=>`
     <div class="history-item"><div class="hdate">${fmtDateTime(h.data)}</div>${h.texto}</div>
   `).join('') : '<div class="history-item" style="color:var(--muted);">Nenhuma gravação registrada ainda.</div>';
+}
+function normalizeChecklistItem(it){
+  return {
+    texto: it.texto || '',
+    status: it.status || (it.feito ? 'Concluído' : 'Não iniciado'),
+    prazo: it.prazo || ''
+  };
 }
 function ensurePlanejamentoActivity(id){
   if(!planejamentoActivities[id]) planejamentoActivities[id] = {atividade:'', status:'Não iniciado', prazo:'', historico:[], checklist:[]};
@@ -1969,15 +2033,22 @@ function addPlanejamentoChecklistItem(){
   const texto = input.value.trim();
   if(!texto) return;
   const act = ensurePlanejamentoActivity(planejamentoModalId);
-  act.checklist.push({texto, feito:false});
+  act.checklist.push({texto, status:'Não iniciado', prazo:''});
   input.value = '';
   renderPlanejamentoChecklist(planejamentoModalId);
   renderPlanejamento();
   pushStateDebounced();
 }
-function togglePlanejamentoChecklistItem(id, i){
+function updatePlanejamentoChecklistStatus(id, i, status){
   const act = ensurePlanejamentoActivity(id);
-  if(act.checklist[i]) act.checklist[i].feito = !act.checklist[i].feito;
+  if(act.checklist[i]) act.checklist[i] = {...normalizeChecklistItem(act.checklist[i]), status};
+  renderPlanejamentoChecklist(id);
+  renderPlanejamento();
+  pushStateDebounced();
+}
+function updatePlanejamentoChecklistPrazo(id, i, prazo){
+  const act = ensurePlanejamentoActivity(id);
+  if(act.checklist[i]) act.checklist[i] = {...normalizeChecklistItem(act.checklist[i]), prazo};
   renderPlanejamentoChecklist(id);
   renderPlanejamento();
   pushStateDebounced();
