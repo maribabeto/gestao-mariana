@@ -272,6 +272,7 @@
   .modal-overlay.show{display:flex;}
   .modal-box{
     background:var(--paper);border-radius:16px;padding:26px 28px;max-width:380px;width:100%;
+    max-height:88vh;overflow-y:auto;box-sizing:border-box;
   }
   .modal-close-x{
     position:absolute;top:14px;right:14px;background:none;border:none;cursor:pointer;
@@ -297,14 +298,15 @@
   }
   .history-item .hdate{color:var(--muted);font-size:11px;font-weight:600;margin-bottom:3px;}
   .check-item{
-    display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;background:#f7f4ec;border-radius:9px;
-    padding:8px 10px;margin-bottom:6px;font-size:12.5px;
+    background:#f7f4ec;border-radius:9px;padding:7px 9px;margin-bottom:6px;font-size:12px;
   }
-  .check-item.done .check-text{text-decoration:line-through;color:var(--muted);}
-  .check-item .check-text{flex:1 1 100%;font-weight:600;}
-  .check-item select.check-status-select{font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:#fff;}
-  .check-item input.check-prazo-input{font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:#fff;max-width:128px;}
-  .check-item .check-del{cursor:pointer;color:var(--danger);font-size:13px;line-height:1;background:none;border:none;padding:2px 4px;margin-left:auto;}
+  .check-item.done{background:#dcf3e3;}
+  .check-item .check-text{font-weight:600;margin-bottom:5px;word-break:break-word;}
+  .check-item.done .check-text{color:#1f7a3f;}
+  .check-controls{display:flex;align-items:center;gap:5px;}
+  .check-controls select.check-status-select{flex:1 1 0;min-width:0;font-size:10.5px;padding:3px 3px;border-radius:6px;border:1px solid var(--line);background:#fff;}
+  .check-controls input.check-prazo-input{flex:1 1 0;min-width:0;font-size:10.5px;padding:3px 3px;border-radius:6px;border:1px solid var(--line);background:#fff;}
+  .check-controls .check-del{flex:none;cursor:pointer;color:var(--danger);font-size:13px;line-height:1;background:none;border:none;padding:2px 4px;}
   .check-add-row{display:flex;gap:6px;margin-top:8px;}
   .check-add-row input{flex:1;}
   .plan-progress{font-size:11px;color:var(--muted);margin-top:2px;}
@@ -323,7 +325,9 @@
   .concluido-box .col-head{margin-bottom:10px;}
   .concluido-box .col-head .title{color:var(--ok);}
   .concluido-box .col-head .count{background:var(--ok);}
-  .concluido-grid{display:none;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;max-height:320px;overflow-y:auto;padding-top:2px;}
+  .concluido-grid{display:none;grid-template-columns:repeat(3,1fr);gap:10px;max-height:400px;overflow-y:auto;padding-top:2px;}
+  @media (max-width:1000px){ .concluido-grid{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:640px){ .concluido-grid{grid-template-columns:1fr;} }
   .concluido-grid.show{display:grid;}
   .concluido-box .col-head{cursor:pointer;user-select:none;}
   .archive-box{background:#f0f0f2;border-color:#d8d8de;margin-top:14px;}
@@ -426,9 +430,10 @@
   .boost-add-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
   .boost-add-row input{box-sizing:border-box;}
   .boost-item{background:#f7f4ec;border-radius:10px;padding:12px 14px;margin-bottom:10px;}
-  .boost-item-head{display:flex;justify-content:space-between;align-items:center;gap:8px;}
-  .boost-titulo{font-weight:700;font-size:13.5px;}
-  .boost-periodo{font-size:11.5px;color:var(--muted);margin:2px 0 8px;}
+  .boost-item-head{display:flex;align-items:center;gap:10px;}
+  .boost-titulo{font-weight:700;font-size:13.5px;flex:1;}
+  .boost-periodo{font-size:11.5px;color:var(--muted);white-space:nowrap;}
+  .boost-reg{font-size:11.5px;color:var(--muted);margin:4px 0 8px;}
   .boost-result{font-size:12.5px;line-height:1.5;color:var(--ink);}
   .boost-result .status-badge{margin-left:6px;}
 
@@ -801,7 +806,7 @@
           <input type="text" id="planejamento-checklist-input" class="edit-input" placeholder="Ex: preparar posts do Instagram" onkeydown="if(event.key==='Enter'){event.preventDefault();addPlanejamentoChecklistItem();}">
           <button class="btn secondary" style="flex:none;padding:0 14px;" onclick="addPlanejamentoChecklistItem()">+</button>
         </div>
-        <div id="planejamento-checklist-list" style="margin-top:10px;"></div>
+        <div id="planejamento-checklist-list" style="margin-top:10px;max-height:200px;overflow-y:auto;"></div>
       </div>
 
       <div class="modal-history-section">
@@ -1927,13 +1932,16 @@ function renderBoostedVideos(){
       const pctTxt = r.pct===null ? '' : `<span class="status-badge ${r.pct>=0?'status-concluido':'status-nao'}">${r.pct>=0?'+':''}${r.pct.toFixed(0)}% ${r.pct>=0?'acima':'abaixo'} da média</span>`;
       resultHTML = `Seguidores: ${r.startEntry.count} → ${r.endEntry.count} (${r.periodGain>=0?'+':''}${r.periodGain}) · média ${r.periodAvg.toFixed(1)}/dia no período vs ${r.overallAvg.toFixed(1)}/dia geral ${pctTxt}`;
     }
+    const regTxt = (b.seguidoresRegistro!==undefined && b.seguidoresRegistro!==null)
+      ? `<div class="boost-reg">Seguidores no dia do registro (${fmtDate(b.dataRegistro)}): <b>${b.seguidoresRegistro}</b></div>` : '';
     return `
       <div class="boost-item">
         <div class="boost-item-head">
           <div class="boost-titulo">${b.titulo}</div>
+          <div class="boost-periodo">${fmtDate(b.inicio)} — ${fmtDate(b.fim)}</div>
           <button class="check-del" onclick="deleteBoostedVideo('${b.id}')">✕</button>
         </div>
-        <div class="boost-periodo">${fmtDate(b.inicio)} — ${fmtDate(b.fim)}</div>
+        ${regTxt}
         <div class="boost-result">${resultHTML}</div>
       </div>
     `;
@@ -1951,7 +1959,14 @@ function addBoostedVideo(){
     showUploadToast('A data de fim precisa ser depois da data de início.', true);
     return;
   }
-  boostedVideos.push({id:'boost-'+Date.now(), titulo, inicio, fim});
+  const sortedInsta = [...instaLog].sort((a,b2)=>a.date.localeCompare(b2.date));
+  const latest = sortedInsta.length ? sortedInsta[sortedInsta.length-1] : null;
+  const hoje = new Date().toISOString().slice(0,10);
+  boostedVideos.push({
+    id:'boost-'+Date.now(), titulo, inicio, fim,
+    seguidoresRegistro: latest ? latest.count : null,
+    dataRegistro: latest ? latest.date : hoje,
+  });
   document.getElementById('boost-titulo-input').value = '';
   document.getElementById('boost-inicio-input').value = '';
   document.getElementById('boost-fim-input').value = '';
@@ -2099,13 +2114,15 @@ function renderPlanejamentoChecklist(id){
     return `
     <div class="check-item ${it.status==='Concluído'?'done':''}">
       <div class="check-text">${it.texto}</div>
-      <select class="check-status-select" onchange="updatePlanejamentoChecklistStatus('${id}',${i},this.value)">
-        <option value="Não iniciado" ${it.status==='Não iniciado'?'selected':''}>Não iniciado</option>
-        <option value="Em andamento" ${it.status==='Em andamento'?'selected':''}>Em andamento</option>
-        <option value="Concluído" ${it.status==='Concluído'?'selected':''}>Concluído</option>
-      </select>
-      <input type="date" class="check-prazo-input" value="${it.prazo}" onchange="updatePlanejamentoChecklistPrazo('${id}',${i},this.value)">
-      <button class="check-del" onclick="deletePlanejamentoChecklistItem('${id}',${i})">✕</button>
+      <div class="check-controls">
+        <select class="check-status-select" onchange="updatePlanejamentoChecklistStatus('${id}',${i},this.value)">
+          <option value="Não iniciado" ${it.status==='Não iniciado'?'selected':''}>Não iniciado</option>
+          <option value="Em andamento" ${it.status==='Em andamento'?'selected':''}>Em andamento</option>
+          <option value="Concluído" ${it.status==='Concluído'?'selected':''}>Concluído</option>
+        </select>
+        <input type="date" class="check-prazo-input" value="${it.prazo}" onchange="updatePlanejamentoChecklistPrazo('${id}',${i},this.value)">
+        <button class="check-del" onclick="deletePlanejamentoChecklistItem('${id}',${i})">✕</button>
+      </div>
     </div>
   `;
   }).join('') : '<div style="color:var(--muted);font-size:12px;">Nenhum item ainda.</div>';
