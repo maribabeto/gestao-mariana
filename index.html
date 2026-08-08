@@ -423,6 +423,15 @@
   .log-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);color:var(--muted);}
   .log-row b{color:var(--ink);}
 
+  .boost-add-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
+  .boost-add-row input{box-sizing:border-box;}
+  .boost-item{background:#f7f4ec;border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+  .boost-item-head{display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .boost-titulo{font-weight:700;font-size:13.5px;}
+  .boost-periodo{font-size:11.5px;color:var(--muted);margin:2px 0 8px;}
+  .boost-result{font-size:12.5px;line-height:1.5;color:var(--ink);}
+  .boost-result .status-badge{margin-left:6px;}
+
   @media (max-width:1000px){
     .kpi-grid{grid-template-columns:repeat(2,1fr);}
     .grid-2{grid-template-columns:1fr;}
@@ -690,6 +699,18 @@
             Ver avaliações no Google ↗
           </a>
         </div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <h3>Vídeos impulsionados</h3>
+        <div class="card-sub" style="margin-bottom:10px;">Registre o período em que um vídeo ficou impulsionado para comparar o crescimento de seguidores nesse intervalo com a média geral</div>
+        <div class="boost-add-row">
+          <input type="text" id="boost-titulo-input" class="edit-input" placeholder="Nome/descrição do vídeo" style="flex:2 1 200px;">
+          <input type="date" id="boost-inicio-input" class="edit-input" style="flex:1 1 140px;" title="Início do impulsionamento">
+          <input type="date" id="boost-fim-input" class="edit-input" style="flex:1 1 140px;" title="Fim do impulsionamento">
+          <button class="btn" style="flex:none;" onclick="addBoostedVideo()">+ Adicionar</button>
+        </div>
+        <div id="boosted-videos-list"></div>
       </div>
     </section>
 
@@ -1825,6 +1846,7 @@ renderTable();
 // Registrado por mim (Claude) quando você pede pra checar os links — sem inserção manual na tela.
 let googleLog = [{date:'2026-08-03', count:29}, {date:'2026-08-04', count:30}];
 let instaLog = [{date:'2026-08-03', count:3586}, {date:'2026-08-04', count:3589}];
+let boostedVideos = []; // {id, titulo, inicio, fim}
 
 let chartGoogle, chartInsta;
 function buildRepCharts(){
@@ -1859,6 +1881,89 @@ refreshRepChart(chartGoogle, googleLog);
 refreshRepChart(chartInsta, instaLog);
 refreshLogList('google-log', googleLog);
 refreshLogList('insta-log', instaLog);
+
+// ---------- Vídeos impulsionados ----------
+function repDayDiff(a,b){
+  const da = new Date(a+'T00:00:00Z'), db = new Date(b+'T00:00:00Z');
+  return Math.round((da-db)/86400000);
+}
+function closestLogOnOrAfter(sorted, iso){
+  for(const e of sorted){ if(e.date >= iso) return e; }
+  return null;
+}
+function closestLogOnOrBefore(sorted, iso){
+  let r = null;
+  for(const e of sorted){ if(e.date <= iso) r = e; else break; }
+  return r;
+}
+function computeBoostResult(b){
+  const sorted = [...instaLog].sort((a,b2)=>a.date.localeCompare(b2.date));
+  if(sorted.length < 2) return {ok:false, reason:'Ainda não há histórico suficiente de seguidores registrado.'};
+  const startEntry = closestLogOnOrAfter(sorted, b.inicio) || closestLogOnOrBefore(sorted, b.inicio);
+  const endEntry = closestLogOnOrBefore(sorted, b.fim);
+  if(!startEntry || !endEntry || repDayDiff(endEntry.date, startEntry.date) <= 0){
+    return {ok:false, reason:'Ainda não há registros de seguidores cobrindo esse período.'};
+  }
+  const periodDays = Math.max(1, repDayDiff(endEntry.date, startEntry.date));
+  const periodGain = endEntry.count - startEntry.count;
+  const periodAvg = periodGain / periodDays;
+  const first = sorted[0], last = sorted[sorted.length-1];
+  const overallDays = Math.max(1, repDayDiff(last.date, first.date));
+  const overallGain = last.count - first.count;
+  const overallAvg = overallGain / overallDays;
+  const pct = overallAvg !== 0 ? ((periodAvg - overallAvg) / Math.abs(overallAvg)) * 100 : null;
+  return {ok:true, startEntry, endEntry, periodGain, periodAvg, overallAvg, pct};
+}
+function renderBoostedVideos(){
+  const el = document.getElementById('boosted-videos-list');
+  if(!el) return;
+  const sorted = [...boostedVideos].sort((a,b)=> b.inicio.localeCompare(a.inicio));
+  el.innerHTML = sorted.length ? sorted.map(b=>{
+    const r = computeBoostResult(b);
+    let resultHTML;
+    if(!r.ok){
+      resultHTML = `<span class="status-badge status-nao">${r.reason}</span>`;
+    } else {
+      const pctTxt = r.pct===null ? '' : `<span class="status-badge ${r.pct>=0?'status-concluido':'status-nao'}">${r.pct>=0?'+':''}${r.pct.toFixed(0)}% ${r.pct>=0?'acima':'abaixo'} da média</span>`;
+      resultHTML = `Seguidores: ${r.startEntry.count} → ${r.endEntry.count} (${r.periodGain>=0?'+':''}${r.periodGain}) · média ${r.periodAvg.toFixed(1)}/dia no período vs ${r.overallAvg.toFixed(1)}/dia geral ${pctTxt}`;
+    }
+    return `
+      <div class="boost-item">
+        <div class="boost-item-head">
+          <div class="boost-titulo">${b.titulo}</div>
+          <button class="check-del" onclick="deleteBoostedVideo('${b.id}')">✕</button>
+        </div>
+        <div class="boost-periodo">${fmtDate(b.inicio)} — ${fmtDate(b.fim)}</div>
+        <div class="boost-result">${resultHTML}</div>
+      </div>
+    `;
+  }).join('') : '<div style="color:var(--muted);font-size:12.5px;">Nenhum vídeo impulsionado registrado ainda.</div>';
+}
+function addBoostedVideo(){
+  const titulo = document.getElementById('boost-titulo-input').value.trim();
+  const inicio = document.getElementById('boost-inicio-input').value;
+  const fim = document.getElementById('boost-fim-input').value;
+  if(!titulo || !inicio || !fim){
+    showUploadToast('Preencha o nome do vídeo e o período (início e fim).', true);
+    return;
+  }
+  if(fim < inicio){
+    showUploadToast('A data de fim precisa ser depois da data de início.', true);
+    return;
+  }
+  boostedVideos.push({id:'boost-'+Date.now(), titulo, inicio, fim});
+  document.getElementById('boost-titulo-input').value = '';
+  document.getElementById('boost-inicio-input').value = '';
+  document.getElementById('boost-fim-input').value = '';
+  renderBoostedVideos();
+  pushStateDebounced();
+}
+function deleteBoostedVideo(id){
+  boostedVideos = boostedVideos.filter(b=>b.id!==id);
+  renderBoostedVideos();
+  pushStateDebounced();
+}
+renderBoostedVideos();
 
 // =====================================================================
 // Atualização a partir de nova planilha (.xlsx)
@@ -2117,7 +2222,7 @@ function gatherState(){
     currentStage, patientHistory, patientFlags, snoozedUntil, dayActivities,
     planejamento: { dates: PLANEJAMENTO_DATES, activities: planejamentoActivities },
     scripts: SCRIPTS,
-    reputation: { googleLog, instaLog },
+    reputation: { googleLog, instaLog, boostedVideos },
   };
 }
 function applyRemoteState(state){
@@ -2135,6 +2240,7 @@ function applyRemoteState(state){
   if(state.reputation){
     if(state.reputation.googleLog) googleLog = state.reputation.googleLog;
     if(state.reputation.instaLog) instaLog = state.reputation.instaLog;
+    if(state.reputation.boostedVideos) boostedVideos = state.reputation.boostedVideos;
   }
 }
 function refreshEverything(){
@@ -2158,6 +2264,7 @@ function refreshEverything(){
     refreshRepChart(chartInsta, instaLog);
     refreshLogList('insta-log', instaLog);
   }
+  renderBoostedVideos();
 }
 function setSyncStatus(text, cls){
   const el = document.getElementById('sync-status');
