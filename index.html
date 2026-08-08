@@ -295,6 +295,15 @@
     background:#f7f4ec;border-radius:9px;padding:9px 11px;margin-bottom:7px;font-size:12.5px;
   }
   .history-item .hdate{color:var(--muted);font-size:11px;font-weight:600;margin-bottom:3px;}
+  .check-item{
+    display:flex;align-items:center;gap:8px;background:#f7f4ec;border-radius:9px;
+    padding:7px 10px;margin-bottom:6px;font-size:12.5px;
+  }
+  .check-item.done .check-text{text-decoration:line-through;color:var(--muted);}
+  .check-item .check-text{flex:1;}
+  .check-item .check-del{cursor:pointer;color:var(--danger);font-size:13px;line-height:1;background:none;border:none;padding:2px 4px;}
+  .check-add-row{display:flex;gap:6px;margin-top:8px;}
+  .check-add-row input{flex:1;}
   .flag-tag{
     display:inline-block;background:#f3e5fb;color:#8a3fc9;font-size:11px;font-weight:700;
     padding:3px 9px;border-radius:999px;
@@ -532,7 +541,6 @@
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
           <div>
             <h3 style="margin-bottom:2px;">Calendário de contatos</h3>
-            <div class="card-sub" style="margin-bottom:0;">Quantos pacientes precisam de contato em cada dia</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;">
             <button class="cal-nav" id="cal-prev">‹</button>
@@ -758,6 +766,22 @@
     <label>Prazo</label>
     <input type="date" id="planejamento-prazo-input" class="edit-input">
 
+    <div id="planejamento-existing-fields" style="display:none;">
+      <div class="modal-history-section">
+        <label style="margin-top:0;">O que precisa ser feito</label>
+        <div class="check-add-row">
+          <input type="text" id="planejamento-checklist-input" class="edit-input" placeholder="Ex: preparar posts do Instagram" onkeydown="if(event.key==='Enter'){event.preventDefault();addPlanejamentoChecklistItem();}">
+          <button class="btn secondary" style="flex:none;padding:0 14px;" onclick="addPlanejamentoChecklistItem()">+</button>
+        </div>
+        <div id="planejamento-checklist-list" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="modal-history-section">
+        <label style="margin-top:0;">Histórico</label>
+        <div id="planejamento-historico-list" class="history-list"></div>
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn secondary" id="planejamento-delete-btn" style="color:var(--danger);border-color:#f0d5d5;" onclick="deletePlanejamentoDate()">Excluir data</button>
       <button class="btn" onclick="savePlanejamentoActivity()">Salvar</button>
@@ -915,6 +939,17 @@ function fmtDate(iso){
   if(!iso) return '—';
   const [y,m,d] = iso.split('-');
   return `${d}/${m}/${y}`;
+}
+function fmtDateTime(iso){
+  if(!iso) return '—';
+  const dt = new Date(iso);
+  if(isNaN(dt.getTime())) return fmtDate(iso);
+  const d = String(dt.getDate()).padStart(2,'0');
+  const m = String(dt.getMonth()+1).padStart(2,'0');
+  const y = dt.getFullYear();
+  const hh = String(dt.getHours()).padStart(2,'0');
+  const mm = String(dt.getMinutes()).padStart(2,'0');
+  return `${d}/${m}/${y} ${hh}:${mm}`;
 }
 function fmtMonth(mstr){
   const meses=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -1873,10 +1908,12 @@ function openPlanejamentoModal(id){
   planejamentoModalId = id;
   const newFields = document.getElementById('planejamento-new-fields');
   const deleteBtn = document.getElementById('planejamento-delete-btn');
+  const existingFields = document.getElementById('planejamento-existing-fields');
   if(id===null){
     document.getElementById('planejamento-modal-title').textContent = 'Nova data comemorativa';
     document.getElementById('planejamento-modal-sub').textContent = 'Adicione uma data e já registre a ação planejada (opcional)';
     newFields.style.display = 'block';
+    existingFields.style.display = 'none';
     document.getElementById('planejamento-titulo-input').value = '';
     document.getElementById('planejamento-data-input').value = '';
     document.getElementById('planejamento-atividade-text').value = '';
@@ -1889,12 +1926,68 @@ function openPlanejamentoModal(id){
     document.getElementById('planejamento-modal-title').textContent = d.titulo;
     document.getElementById('planejamento-modal-sub').textContent = fmtDate(d.data);
     newFields.style.display = 'none';
+    existingFields.style.display = 'block';
     document.getElementById('planejamento-atividade-text').value = act.atividade || '';
     document.getElementById('planejamento-status-select').value = act.status || 'Não iniciado';
     document.getElementById('planejamento-prazo-input').value = act.prazo || '';
     deleteBtn.style.display = 'block';
+    renderPlanejamentoChecklist(id);
+    renderPlanejamentoHistorico(id);
   }
   planejamentoModalEl.classList.add('show');
+}
+function renderPlanejamentoChecklist(id){
+  const act = planejamentoActivities[id] || {};
+  const items = act.checklist || [];
+  const el = document.getElementById('planejamento-checklist-list');
+  el.innerHTML = items.length ? items.map((it,i)=>`
+    <div class="check-item ${it.feito?'done':''}">
+      <input type="checkbox" ${it.feito?'checked':''} onchange="togglePlanejamentoChecklistItem('${id}',${i})">
+      <div class="check-text">${it.texto}</div>
+      <button class="check-del" onclick="deletePlanejamentoChecklistItem('${id}',${i})">✕</button>
+    </div>
+  `).join('') : '<div style="color:var(--muted);font-size:12px;">Nenhum item ainda.</div>';
+}
+function renderPlanejamentoHistorico(id){
+  const act = planejamentoActivities[id] || {};
+  const list = act.historico || [];
+  const sorted = [...list].sort((a,b)=> b.data.localeCompare(a.data));
+  const el = document.getElementById('planejamento-historico-list');
+  el.innerHTML = sorted.length ? sorted.map(h=>`
+    <div class="history-item"><div class="hdate">${fmtDateTime(h.data)}</div>${h.texto}</div>
+  `).join('') : '<div class="history-item" style="color:var(--muted);">Nenhuma gravação registrada ainda.</div>';
+}
+function ensurePlanejamentoActivity(id){
+  if(!planejamentoActivities[id]) planejamentoActivities[id] = {atividade:'', status:'Não iniciado', prazo:'', historico:[], checklist:[]};
+  if(!planejamentoActivities[id].checklist) planejamentoActivities[id].checklist = [];
+  if(!planejamentoActivities[id].historico) planejamentoActivities[id].historico = [];
+  return planejamentoActivities[id];
+}
+function addPlanejamentoChecklistItem(){
+  if(planejamentoModalId===null) return;
+  const input = document.getElementById('planejamento-checklist-input');
+  const texto = input.value.trim();
+  if(!texto) return;
+  const act = ensurePlanejamentoActivity(planejamentoModalId);
+  act.checklist.push({texto, feito:false});
+  input.value = '';
+  renderPlanejamentoChecklist(planejamentoModalId);
+  renderPlanejamento();
+  pushStateDebounced();
+}
+function togglePlanejamentoChecklistItem(id, i){
+  const act = ensurePlanejamentoActivity(id);
+  if(act.checklist[i]) act.checklist[i].feito = !act.checklist[i].feito;
+  renderPlanejamentoChecklist(id);
+  renderPlanejamento();
+  pushStateDebounced();
+}
+function deletePlanejamentoChecklistItem(id, i){
+  const act = ensurePlanejamentoActivity(id);
+  act.checklist.splice(i,1);
+  renderPlanejamentoChecklist(id);
+  renderPlanejamento();
+  pushStateDebounced();
 }
 function closePlanejamentoModal(){
   planejamentoModalEl.classList.remove('show');
@@ -1916,8 +2009,14 @@ function savePlanejamentoActivity(){
   const atividade = document.getElementById('planejamento-atividade-text').value.trim();
   const status = document.getElementById('planejamento-status-select').value;
   const prazo = document.getElementById('planejamento-prazo-input').value;
-  if(atividade || status!=='Não iniciado' || prazo){
-    planejamentoActivities[id] = {atividade, status, prazo};
+  const prev = planejamentoActivities[id] || {};
+  const historico = prev.historico || [];
+  const checklist = prev.checklist || [];
+  if(atividade){
+    historico.push({data: new Date().toISOString(), texto: atividade});
+  }
+  if(atividade || status!=='Não iniciado' || prazo || historico.length || checklist.length){
+    planejamentoActivities[id] = {atividade, status, prazo, historico, checklist};
   } else {
     delete planejamentoActivities[id];
   }
