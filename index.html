@@ -320,12 +320,12 @@
   /* Concluído full-width box */
   .concluido-box{
     background:#eef4f0;border:1px solid #cfe0d6;border-radius:var(--radius);
-    padding:16px 18px;margin-top:16px;
+    padding:16px 18px;margin-top:16px;cursor:pointer;user-select:none;
   }
   .concluido-box .col-head{margin-bottom:10px;}
   .concluido-box .col-head .title{color:var(--ok);}
   .concluido-box .col-head .count{background:var(--ok);}
-  .concluido-grid{display:none;grid-template-columns:repeat(3,1fr);gap:10px;max-height:400px;overflow-y:auto;padding-top:2px;}
+  .concluido-grid{display:none;grid-template-columns:repeat(3,1fr);gap:10px;max-height:400px;overflow-y:auto;padding-top:2px;cursor:default;user-select:text;}
   @media (max-width:1000px){ .concluido-grid{grid-template-columns:repeat(2,1fr);} }
   @media (max-width:640px){ .concluido-grid{grid-template-columns:1fr;} }
   .concluido-grid.show{display:grid;}
@@ -577,16 +577,16 @@
 
       <div class="board" id="board"></div>
 
-      <div class="concluido-box">
-        <div class="col-head" onclick="toggleConcluidoGrid('concluido-grid')">
+      <div class="concluido-box" onclick="toggleConcluidoGridBox(event, 'concluido-grid')">
+        <div class="col-head">
           <div class="title">✓ Concluído 2026</div>
           <div class="count" id="concluido-count">0</div>
         </div>
         <div class="concluido-grid" id="concluido-grid"></div>
       </div>
 
-      <div class="concluido-box archive-box">
-        <div class="col-head" onclick="toggleConcluidoGrid('concluido2025-grid')">
+      <div class="concluido-box archive-box" onclick="toggleConcluidoGridBox(event, 'concluido2025-grid')">
+        <div class="col-head">
           <div class="title">✓ Concluído 2025</div>
           <div class="count" id="concluido2025-count">0</div>
         </div>
@@ -786,15 +786,8 @@
       <input type="date" id="planejamento-data-input" class="edit-input">
     </div>
 
-    <label>Atividade planejada</label>
+    <label>Nome da Ação</label>
     <textarea id="planejamento-atividade-text" class="edit-textarea" style="min-height:70px;" placeholder="Ex: campanha de posts + oferta especial no Instagram"></textarea>
-
-    <label>Status</label>
-    <select id="planejamento-status-select">
-      <option value="Não iniciado">Não iniciado</option>
-      <option value="Em andamento">Em andamento</option>
-      <option value="Concluído">Concluído</option>
-    </select>
 
     <label>Prazo Final</label>
     <input type="date" id="planejamento-prazo-input" class="edit-input">
@@ -811,7 +804,11 @@
 
       <div class="modal-history-section">
         <label style="margin-top:0;">Histórico</label>
-        <div id="planejamento-historico-list" class="history-list"></div>
+        <div class="check-add-row">
+          <input type="text" id="planejamento-historico-input" class="edit-input" placeholder="Adicionar um comentário..." onkeydown="if(event.key==='Enter'){event.preventDefault();addPlanejamentoHistoricoEntry();}">
+          <button class="btn secondary" style="flex:none;padding:0 14px;" onclick="addPlanejamentoHistoricoEntry()">+</button>
+        </div>
+        <div id="planejamento-historico-list" class="history-list" style="margin-top:10px;"></div>
       </div>
     </div>
 
@@ -1028,7 +1025,7 @@ function renderOverview(){
   document.getElementById('kpi-month-patients').textContent = DATA.total_pacientes_unicos;
   document.getElementById('kpi-month-visits').textContent = DATA.total_atendimentos;
   document.getElementById('kpi-total-patients').textContent = DATA.total_pacientes_unicos;
-  document.getElementById('kpi-reactivation').textContent = DATA.stage_counts['Reativação necessária (4+ meses)'] || 0;
+  document.getElementById('kpi-reactivation').textContent = DATA.stage_counts['Reativação necessária'] || 0;
 
   const deltaEl = document.getElementById('kpi-month-delta');
   if(DATA.prev_year_pacientes_unicos && DATA.prev_year_pacientes_unicos > 0){
@@ -1248,6 +1245,10 @@ function toggleConcluidoGrid(id){
   const el = document.getElementById(id);
   if(el) el.classList.toggle('show');
 }
+function toggleConcluidoGridBox(evt, id){
+  if(evt.target.closest('.concluido-grid')) return; // não interfere com cliques nos pacientes já visíveis
+  toggleConcluidoGrid(id);
+}
 
 const procedureModalEl = document.getElementById('procedure-modal');
 function openProcedureModal(procName){
@@ -1271,10 +1272,10 @@ function closeProcedureModal(){
 
 // ---------- Pipeline ----------
 const STAGES = [
-  {key:'Pós-venda D+1', desc:'Mensagem de acompanhamento no dia seguinte', offset:1},
+  {key:'Pós-venda', desc:'Mensagem de acompanhamento no dia seguinte', offset:1},
   {key:'Avaliação Google', desc:'Convite para avaliar a Dra. Mariana', offset:3},
   {key:'Oferta novo procedimento (D+30)', desc:'Mensagem de nova venda', offset:30},
-  {key:'Reativação necessária (4+ meses)', desc:'Sem retorno há 4+ meses', offset:120},
+  {key:'Reativação necessária', desc:'Sem retorno há 4+ meses', offset:120},
 ];
 const CONCLUIDO = 'Concluído';
 const ARCHIVE_2025 = 'Concluído 2025';
@@ -1319,8 +1320,22 @@ const snoozedUntil = {};
 const patientHistory = {};
 const patientFlags = {};
 
-function remaining120(p){
-  return Math.max(0, 120 - (p.dias_desde_visita||0));
+// data (ISO) em que o paciente entrou na etapa "Oferta novo procedimento (D+30)" — usado
+// para a contagem regressiva 30->0 dessa etapa. Se não tiver registro (nunca foi movido
+// manualmente), assume-se que entrou 30 dias após a última visita (mesmo critério do backend).
+const stageEnteredAt = {};
+function daysSinceRef(iso){
+  const d = new Date(iso+'T00:00:00'), today = new Date(DATA.referencia+'T00:00:00');
+  return Math.round((today-d)/86400000);
+}
+function daysInD30(p){
+  const entered = stageEnteredAt[p._id] || addDays(p.ultima_visita, 30);
+  return Math.max(0, 30 - daysSinceRef(entered));
+}
+function markStageEntered(pid, stage){
+  if(stage==='Oferta novo procedimento (D+30)'){
+    stageEnteredAt[pid] = DATA.referencia;
+  }
 }
 function addDays(iso, n){
   const d = new Date(iso+'T00:00:00');
@@ -1344,10 +1359,18 @@ function copyPhone(btn, phone){
 }
 
 function patientCard(p, stageKey){
-  const showCountdown = (stageKey==='Oferta novo procedimento (D+30)');
-  const metaLine = showCountdown
-    ? `${p.procedimento}<br><b style="color:var(--gold);">${remaining120(p)} dias restantes</b> até reativação`
-    : `${p.procedimento}<br>${p.dias_desde_visita} dias desde a visita`;
+  let metaLine;
+  if(stageKey==='Oferta novo procedimento (D+30)'){
+    const dias = daysInD30(p);
+    const cor = dias<=0 ? 'var(--danger)' : 'var(--gold)';
+    metaLine = `${p.procedimento}<br><b style="color:${cor};">${dias} dias para contato</b>`;
+  } else if(stageKey==='Avaliação Google' || stageKey==='Pós-venda'){
+    const dias = p.dias_desde_visita||0;
+    const cor = dias>=2 ? 'var(--danger)' : 'var(--gold)';
+    metaLine = `${p.procedimento}<br><b style="color:${cor};">${dias} dias desde a visita</b>`;
+  } else {
+    metaLine = `${p.procedimento}<br>${p.dias_desde_visita} dias desde a visita`;
+  }
   const flagged = !!patientFlags[p._id];
   return `
     <div class="pcard ${flagged?'flagged':''}" data-pid="${p._id}">
@@ -1374,13 +1397,13 @@ function renderBoard(){
     let all = DATA.patients.filter(p=>currentStage[p._id]===s.key);
 
     if(s.key==='Oferta novo procedimento (D+30)'){
-      all = all.sort((a,b)=> remaining120(a) - remaining120(b));
+      all = all.sort((a,b)=> daysInD30(a) - daysInD30(b));
     } else {
       all = all.sort((a,b)=> (b.dias_desde_visita||0) - (a.dias_desde_visita||0));
     }
 
     let bodyHTML;
-    if(s.key==='Reativação necessária (4+ meses)'){
+    if(s.key==='Reativação necessária'){
       const visible = all.filter(p=> !snoozedUntil[p._id] || snoozedUntil[p._id] <= DATA.referencia);
       const snoozed = all.filter(p=> snoozedUntil[p._id] && snoozedUntil[p._id] > DATA.referencia);
       bodyHTML = `
@@ -1437,6 +1460,7 @@ function handleMark(stageKey, pid){
   const idx = STAGE_ORDER.indexOf(stageKey);
   if(idx>-1 && idx < STAGE_ORDER.length-1){
     currentStage[pid] = STAGE_ORDER[idx+1];
+    markStageEntered(pid, currentStage[pid]);
   }
   renderBoard();
   pushStateDebounced();
@@ -1459,7 +1483,7 @@ function openModal(pid){
   document.getElementById('modal-sub').textContent = `Etapa atual: ${currentStage[pid]}`;
   modalStageSelect.value = currentStage[pid];
   document.getElementById('modal-snooze-section').style.display =
-    (currentStage[pid]==='Reativação necessária (4+ meses)') ? 'block' : 'none';
+    (currentStage[pid]==='Reativação necessária') ? 'block' : 'none';
 
   document.getElementById('modal-flag-check').checked = !!patientFlags[pid];
   document.getElementById('modal-comment-text').value = '';
@@ -1474,6 +1498,7 @@ function closeModal(){
 function applyStageMove(){
   if(modalPid===null) return;
   currentStage[modalPid] = modalStageSelect.value;
+  markStageEntered(modalPid, currentStage[modalPid]);
   renderBoard();
   renderPatientsIfVisible();
   closeModal();
@@ -1621,6 +1646,7 @@ function toggleCalendarEvent(originalStage, pid){
     currentStage[pid] = originalStage; // desfazer
   } else {
     currentStage[pid] = STAGE_ORDER[STAGE_ORDER.indexOf(originalStage)+1] || originalStage;
+    markStageEntered(pid, currentStage[pid]);
   }
   renderBoard();
   renderPatientsIfVisible();
@@ -1675,7 +1701,7 @@ renderCalendar();
 // ---------- Scripts ----------
 let SCRIPTS = [
   {
-    titulo: 'Pós-venda D+1',
+    titulo: 'Pós-venda',
     sub: 'Enviar no dia seguinte ao procedimento',
     texto: `Oi, [NOME]! Aqui é da equipe da Dra. Mariana Babeto 💙
 
@@ -2045,6 +2071,15 @@ function statusClass(status){
   return 'status-nao';
 }
 
+function computeActivityStatus(checklist){
+  const items = (checklist||[]).map(normalizeChecklistItem);
+  if(!items.length) return 'Não iniciado';
+  if(items.some(it=>it.status==='Em andamento')) return 'Em andamento';
+  if(items.every(it=>it.status==='Concluído')) return 'Concluído';
+  if(items.every(it=>it.status==='Não iniciado')) return 'Não iniciado';
+  return 'Em andamento';
+}
+
 const planejamentoListEl = document.getElementById('planejamento-list');
 function renderPlanejamento(){
   const sorted = [...PLANEJAMENTO_DATES].sort((a,b)=> a.data.localeCompare(b.data));
@@ -2055,6 +2090,7 @@ function renderPlanejamento(){
       const hasAct = act && act.atividade;
       const checklist = (act && act.checklist) || [];
       const doneCount = checklist.filter(it=> normalizeChecklistItem(it).status==='Concluído').length;
+      const overallStatus = computeActivityStatus(checklist);
       return `
         <div class="plan-row ${hasAct?'has-activity':''}" onclick="openPlanejamentoModal('${d.id}')">
           <div class="plan-date">${fmtDate(d.data)}</div>
@@ -2063,7 +2099,7 @@ function renderPlanejamento(){
             ${hasAct ? `<div class="plan-activity-preview">${act.atividade}</div>` : ''}
             ${checklist.length ? `<div class="plan-progress">${doneCount}/${checklist.length} etapas concluídas</div>` : ''}
           </div>
-          ${hasAct ? `<span class="status-badge ${statusClass(act.status)}">${act.status}</span>` : ''}
+          ${(hasAct || checklist.length) ? `<span class="status-badge ${statusClass(overallStatus)}">${overallStatus}</span>` : ''}
         </div>
       `;
     }).join('');
@@ -2086,7 +2122,6 @@ function openPlanejamentoModal(id){
     document.getElementById('planejamento-titulo-input').value = '';
     document.getElementById('planejamento-data-input').value = '';
     document.getElementById('planejamento-atividade-text').value = '';
-    document.getElementById('planejamento-status-select').value = 'Não iniciado';
     document.getElementById('planejamento-prazo-input').value = '';
     deleteBtn.style.display = 'none';
   } else {
@@ -2097,9 +2132,9 @@ function openPlanejamentoModal(id){
     newFields.style.display = 'none';
     existingFields.style.display = 'block';
     document.getElementById('planejamento-atividade-text').value = act.atividade || '';
-    document.getElementById('planejamento-status-select').value = act.status || 'Não iniciado';
     document.getElementById('planejamento-prazo-input').value = act.prazo || '';
     deleteBtn.style.display = 'block';
+    document.getElementById('planejamento-historico-input').value = '';
     renderPlanejamentoChecklist(id);
     renderPlanejamentoHistorico(id);
   }
@@ -2200,21 +2235,29 @@ function savePlanejamentoActivity(){
     PLANEJAMENTO_DATES.push({id, data, titulo, ano});
   }
   const atividade = document.getElementById('planejamento-atividade-text').value.trim();
-  const status = document.getElementById('planejamento-status-select').value;
   const prazo = document.getElementById('planejamento-prazo-input').value;
   const prev = planejamentoActivities[id] || {};
   const historico = prev.historico || [];
   const checklist = prev.checklist || [];
-  if(atividade){
-    historico.push({data: new Date().toISOString(), texto: atividade});
-  }
-  if(atividade || status!=='Não iniciado' || prazo || historico.length || checklist.length){
-    planejamentoActivities[id] = {atividade, status, prazo, historico, checklist};
+  if(atividade || prazo || historico.length || checklist.length){
+    planejamentoActivities[id] = {atividade, prazo, historico, checklist};
   } else {
     delete planejamentoActivities[id];
   }
   renderPlanejamento();
   closePlanejamentoModal();
+  pushStateDebounced();
+}
+function addPlanejamentoHistoricoEntry(){
+  if(planejamentoModalId===null) return;
+  const input = document.getElementById('planejamento-historico-input');
+  const texto = input.value.trim();
+  if(!texto) return;
+  const act = ensurePlanejamentoActivity(planejamentoModalId);
+  act.historico.push({data: new Date().toISOString(), texto});
+  input.value = '';
+  renderPlanejamentoHistorico(planejamentoModalId);
+  renderPlanejamento();
   pushStateDebounced();
 }
 function deletePlanejamentoDate(){
@@ -2236,7 +2279,7 @@ let pushStateTimer = null;
 
 function gatherState(){
   return {
-    currentStage, patientHistory, patientFlags, snoozedUntil, dayActivities,
+    currentStage, patientHistory, patientFlags, snoozedUntil, dayActivities, stageEnteredAt,
     planejamento: { dates: PLANEJAMENTO_DATES, activities: planejamentoActivities },
     scripts: SCRIPTS,
     reputation: { googleLog, instaLog, boostedVideos },
@@ -2249,6 +2292,7 @@ function applyRemoteState(state){
   Object.assign(patientFlags, state.patientFlags||{});
   Object.assign(snoozedUntil, state.snoozedUntil||{});
   Object.assign(dayActivities, state.dayActivities||{});
+  Object.assign(stageEnteredAt, state.stageEnteredAt||{});
   if(state.planejamento){
     if(state.planejamento.dates && state.planejamento.dates.length) PLANEJAMENTO_DATES = state.planejamento.dates;
     Object.assign(planejamentoActivities, state.planejamento.activities||{});
@@ -2346,11 +2390,13 @@ window.savePlanejamentoActivity = savePlanejamentoActivity;
 window.saveScript = saveScript;
 window.toggleCalendarEvent = toggleCalendarEvent;
 window.toggleConcluidoGrid = toggleConcluidoGrid;
+window.toggleConcluidoGridBox = toggleConcluidoGridBox;
 window.clearProcedureSourceFilter = clearProcedureSourceFilter;
 window.addPlanejamentoChecklistItem = addPlanejamentoChecklistItem;
 window.updatePlanejamentoChecklistStatus = updatePlanejamentoChecklistStatus;
 window.updatePlanejamentoChecklistPrazo = updatePlanejamentoChecklistPrazo;
 window.deletePlanejamentoChecklistItem = deletePlanejamentoChecklistItem;
+window.addPlanejamentoHistoricoEntry = addPlanejamentoHistoricoEntry;
 window.addBoostedVideo = addBoostedVideo;
 window.deleteBoostedVideo = deleteBoostedVideo;
 
