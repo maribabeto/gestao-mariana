@@ -2061,8 +2061,14 @@ function closePatientHistoryModal(){
 }
 const recorrentesModalEl = document.getElementById('recorrentes-modal');
 function openRecorrentesModal(){
-  const recList = (DATA.recorrentes_lista || []).slice().sort((a,b)=> b.vezes - a.vezes);
-  const naoRecList = (DATA.nao_recorrentes_lista || []).slice().sort((a,b)=> a.nome.localeCompare(b.nome));
+  // normaliza cada item para {nome, _id}, aceitando tanto o formato novo (objeto)
+  // quanto dados antigos publicados antes dessa função existir (só o nome, como texto)
+  function normalizePerson(x){
+    if(typeof x === 'string') return {nome: x, _id: stableId(x)};
+    return {nome: x.nome, _id: x._id || stableId(x.nome), vezes: x.vezes};
+  }
+  const recList = (DATA.recorrentes_lista || []).map(normalizePerson).sort((a,b)=> (b.vezes||0) - (a.vezes||0));
+  const naoRecList = (DATA.nao_recorrentes_lista || []).map(normalizePerson).sort((a,b)=> a.nome.localeCompare(b.nome));
   document.getElementById('recorrentes-col-title').textContent = `Recorrentes (${recList.length})`;
   document.getElementById('nao-recorrentes-col-title').textContent = `Não recorrentes (${naoRecList.length})`;
   document.getElementById('recorrentes-list').innerHTML = recList.length ? recList.map(r=>`
